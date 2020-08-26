@@ -1,0 +1,9 @@
+# depslib dependency file v1.0
+1598395749 source:c:\users\chregu\desktop\c\pigfxtester\main.c
+	<windows.h>
+	<stdlib.h>
+	<stdio.h>
+	<string.h>
+	<commdlg.h>
+	<time.h>
+
