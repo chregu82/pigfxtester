@@ -44,8 +44,16 @@ unsigned int barPosition = INITALbarPOS;
 tPos ballPos;
 tBrick brick[100];
 unsigned char pause = 0;
-char lives = '4';
-char score[4];
+char lives;
+char score[5];
+char ballXspeed = -5;
+char ballYspeed = -5;
+unsigned char collDetState = 0;
+unsigned char getColPartIdx = 0;
+unsigned int colDetParners[2];
+unsigned char changeDirWithBrick;
+unsigned char gameOver = 0;
+char* title = "LIVES:                           PiGFX Breakout                      SCORE: 0000";
 
 void fSend(void* p, unsigned int size)
 {
@@ -267,12 +275,26 @@ void fUpdateLives(char lives)
     fSend(tmpStr, pos);
 }
 
+void fDisplayPause(char state)
+{
+    char tmpStr[20];
+    strcpy(tmpStr, "\e[1;19H");
+    if (state == 1) strcat(tmpStr, "PAUSE");
+    else strcat(tmpStr, "     ");
+    fSend(tmpStr, strlen(tmpStr));
+}
+
 void fUpdateScore(char* score)
 {
     char tmpStr[20];
-    strcpy(tmpStr, "\e[1;78H");
+    strcpy(tmpStr, "\e[1;77H");
 
-    score[2]++;
+    score[3]++;
+    if (score[3] > '9')
+    {
+        score[2]++;
+        score[3] = '0';
+    }
     if (score[2] > '9')
     {
         score[1]++;
@@ -371,15 +393,66 @@ void fMoveBar(int move)
     }
 }
 
+void fDrawBricks()
+{
+    // draw first line
+    unsigned char nbrSprites = 0;
+    for (unsigned int j=0; j<7; j++)
+    {
+        for (unsigned int i=0; i<=7; i++)
+        {
+            unsigned int idx = j*8+i;
+            brick[idx].pos.x = 40+i*BRICKwidth;
+            brick[idx].pos.y = 60+j*BRICKheight;
+            brick[idx].hits = 0;
+            fPutSprite(10+nbrSprites++, j, brick[idx].pos.x, brick[idx].pos.y);
+        }
+    }
+}
+
+void fInitGame()
+{
+    ballMoving = 0;
+    barPosition = INITALbarPOS;
+    ballXspeed = -5;
+    ballYspeed = -5;
+
+    fDisableCursor();
+    fClearScreen();
+
+    fSend(title, strlen(title));
+
+    lives = '4';
+    fUpdateLives(lives);
+
+    strcpy(score, "0000");
+
+    ballPos.x = barPosition + BARwidth/2-10;        // on position 30
+    ballPos.y = BARyPOS-BALLwh;
+
+    // Put ball
+    fPutSprite(spIdxBall, 8, ballPos.x, ballPos.y);
+
+    // Put bar
+    fPutSprite(spIdxBar, 7, barPosition, BARyPOS);
+
+    // Put top border
+    fPutSprite(spIdxTopBorder, 9, 0, 20);
+
+    // Put bottom border
+    fPutSprite(spIdxBottomBorder, 9, 0, 479);
+
+    // Put left border
+    fPutSprite(spIdxLeftBorder, 10, 0, 21);
+
+    // Put right border
+    fPutSprite(spIdxRightBorder, 10, 639, 21);
+
+    fDrawBricks();
+}
+
 int main()
 {
-    char ballXspeed = -5;
-    char ballYspeed = -5;
-    unsigned char collDetState = 0;
-    unsigned char getColPartIdx = 0;
-    unsigned int colDetParners[2];
-    unsigned char changeDirWithBrick;
-
     COMMTIMEOUTS timeouts;
     COMMCONFIG dcbSerialParams;
     DWORD dwBytesRead;
@@ -440,9 +513,6 @@ int main()
         printf("error setting port state \n");
     }
 
-    fDisableCursor();
-    fClearScreen();
-
     fSendUnicolorBitmapWithBorder(0, BRICKwidth, BRICKheight, 21); // blue
     fSendUnicolorBitmapWithBorder(1, BRICKwidth, BRICKheight, 22); // green
     fSendUnicolorBitmapWithBorder(2, BRICKwidth, BRICKheight, 52); // darkred
@@ -459,50 +529,7 @@ int main()
     fSendUnicolorBitmap(10, 1, 480-20-2, 0); // grey        // top / bottom end
     fCreateGameOverBitmap(11);
 
-    //CloseHandle(hSerial);
-
-    //return 0;
-
-    char* title = "LIVES:                           PiGFX Breakout                       SCORE: 000";
-    fSend(title, strlen(title));
-    fUpdateLives(lives);
-    strcpy(score, "000");
-
-    unsigned char nbrSprites = 0;
-
-    ballPos.x = barPosition + BARwidth/2-10;        // on position 30
-    ballPos.y = BARyPOS-BALLwh;
-
-    // Put ball
-    fPutSprite(spIdxBall, 8, ballPos.x, ballPos.y);
-
-    // Put bar
-    fPutSprite(spIdxBar, 7, barPosition, BARyPOS);
-
-    // Put top border
-    fPutSprite(spIdxTopBorder, 9, 0, 20);
-
-    // Put bottom border
-    fPutSprite(spIdxBottomBorder, 9, 0, 479);
-
-    // Put left border
-    fPutSprite(spIdxLeftBorder, 10, 0, 21);
-
-    // Put right border
-    fPutSprite(spIdxRightBorder, 10, 639, 21);
-
-    // draw first line
-    for (unsigned int j=0; j<7; j++)
-    {
-        for (unsigned int i=0; i<=7; i++)
-        {
-            unsigned int idx = j*8+i;
-            brick[idx].pos.x = 40+i*BRICKwidth;
-            brick[idx].pos.y = 60+j*BRICKheight;
-            brick[idx].hits = 0;
-            fPutSprite(10+nbrSprites++, j, brick[idx].pos.x, brick[idx].pos.y);
-        }
-    }
+    fInitGame();
 
     unsigned char serialInput;
     time_t lastTime;
@@ -549,37 +576,63 @@ int main()
                         }
                         else if (colDetParners[1] == spIdxBottomBorder)
                         {
-                            fUpdateLives(--lives);
+                            lives--;
+                            fUpdateLives(lives);
+
+                            ballMoving = 0;
+                            barPosition = INITALbarPOS;
+                            fMoveSprite(spIdxBar, barPosition, BARyPOS);
+
+                            ballPos.x = barPosition + BARwidth/2-10;        // on position 30
+                            ballPos.y = BARyPOS-BALLwh;
+                            fMoveSprite(spIdxBall, ballPos.x, ballPos.y);
+
                             if (lives == '0')
                             {
                                 // game over
+                                gameOver = 1;
                                 fPutSprite(spIdxGameOver, 11, 135, 130);
-                            }
-                            else
-                            {
-                                ballMoving = 0;
-                                barPosition = INITALbarPOS;
-                                fMoveSprite(spIdxBar, barPosition, BARyPOS);
-
-                                ballPos.x = barPosition + BARwidth/2-10;        // on position 30
-                                ballPos.y = BARyPOS-BALLwh;
-                                fMoveSprite(spIdxBall, ballPos.x, ballPos.y);
                             }
                         }
 
                         // BAR
                         else if (colDetParners[1] == spIdxBar)
                         {
-                            printf("collision with bar , bar x %i, ballpos %i,%i\n", barPosition, ballPos.x, ballPos.y);
+                            //printf("collision with bar , bar x %i, ballpos %i,%i\n", barPosition, ballPos.x, ballPos.y);
                             if (ballPos.x+BALLwh <= barPosition) ballXspeed = ballXspeed * -1;
                             else if (ballPos.x >= barPosition+BARwidth) ballXspeed = ballXspeed * -1;
                             else
                             {
-                                ballYspeed = -5;
-                                if (ballPos.x >= barPosition + 60) ballXspeed = 10;
-                                else if (ballPos.x >= barPosition + 40) ballXspeed = 5;
-                                else if (ballPos.x >= barPosition + 20) ballXspeed = -5;
-                                else ballXspeed = -10;
+                                if (ballPos.x >= barPosition + 70)
+                                {
+                                    ballYspeed = -5;
+                                    ballXspeed = 10;
+                                }
+                                else if (ballPos.x >= barPosition + 50)
+                                {
+                                    ballYspeed = -5;
+                                    ballXspeed = 5;
+                                }
+                                else if (ballPos.x >= barPosition + 40)
+                                {
+                                    ballYspeed = -10;
+                                    ballXspeed = 5;
+                                }
+                                else if (ballPos.x >= barPosition + 30)
+                                {
+                                    ballYspeed = -10;
+                                    ballXspeed = -5;
+                                }
+                                else if (ballPos.x >= barPosition + 10)
+                                {
+                                    ballYspeed = -5;
+                                    ballXspeed = -5;
+                                }
+                                else
+                                {
+                                    ballYspeed = -5;
+                                    ballXspeed = -10;
+                                }
                             }
                             // correct penetration
                             if (ballPos.y % 10 > 0) ballPos.y -=5;
@@ -592,7 +645,7 @@ int main()
                         {
                             // collision with brick
                             unsigned int brickIdx = colDetParners[1] - 10;
-                            printf("collision with brick %i , brickpos %i,%i, ballpos %i,%i\n", brickIdx, brick[brickIdx].pos.x, brick[brickIdx].pos.y, ballPos.x, ballPos.y);
+                            //printf("collision with brick %i , brickpos %i,%i, ballpos %i,%i\n", brickIdx, brick[brickIdx].pos.x, brick[brickIdx].pos.y, ballPos.x, ballPos.y);
 
                             brick[brickIdx].hits++;
 
@@ -605,6 +658,21 @@ int main()
                             {
                                 fRemoveSprite(brickIdx+10);
                             }
+
+                            unsigned int tmpScore = (score[0]-'0')*1000+(score[1]-'0')*100+(score[2]-'0')*10+score[3]-'0';
+                            if (tmpScore % 56 == 0)
+                            {
+                                // next level
+                                ballMoving = 0;
+                                barPosition = INITALbarPOS;
+                                fMoveSprite(spIdxBar, barPosition, BARyPOS);
+
+                                ballPos.x = barPosition + BARwidth/2-10;        // on position 30
+                                ballPos.y = BARyPOS-BALLwh;
+                                fMoveSprite(spIdxBall, ballPos.x, ballPos.y);
+
+                                fDrawBricks();
+                            }
                         }
                     }
 
@@ -615,11 +683,11 @@ int main()
                     collDetState = 0;
                 }
             }
-            else if ((serialInput == 'v') && (!pause) && (ballPos.y+BALLwh <= BARyPOS))
+            else if ((serialInput == 'v') && (!pause) && (!gameOver) && (ballPos.y+BALLwh <= BARyPOS))
             {
                 if (barPosition >= 20) fMoveBar(-20);
             }
-            else if ((serialInput == 'b') && (!pause) && (ballPos.y+BALLwh <= BARyPOS))
+            else if ((serialInput == 'b') && (!pause) && (!gameOver) && (ballPos.y+BALLwh <= BARyPOS))
             {
                 if (barPosition <= 640-BARwidth-20) fMoveBar(20);
             }
@@ -627,12 +695,21 @@ int main()
             {
                 ballMoving = !ballMoving;
                 pause = !pause;
+                fDisplayPause(pause);
             }
             else if ((serialInput == ' ') && (!pause))
             {
-                // space starts ball
-                lastTime = clock();       // ms
-                ballMoving = 1;
+                if (gameOver)
+                {
+                    gameOver = 0;
+                    fInitGame();
+                }
+                else
+                {
+                    // space starts ball
+                    lastTime = clock();       // ms
+                    ballMoving = 1;
+                }
             }
             else if (serialInput == '\e')
             {
@@ -643,7 +720,7 @@ int main()
             }
             else
             {
-                printf("Data read from read buffer is %i \n",serialInput);
+                //printf("Data read from read buffer is %i \n",serialInput);
             }
         }
 
