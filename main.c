@@ -53,7 +53,8 @@ unsigned char getColPartIdx = 0;
 unsigned int colDetParners[2];
 unsigned char changeDirWithBrick;
 unsigned char gameOver = 0;
-char* title = "LIVES:                           PiGFX Breakout                      SCORE: 0000";
+unsigned char level = 1;
+char* title = "LIVES:                           PiGFX Breakout      LEVEL: 01       SCORE: 0000";
 
 void fSend(void* p, unsigned int size)
 {
@@ -275,6 +276,17 @@ void fUpdateLives(char lives)
     fSend(tmpStr, pos);
 }
 
+void fUpdateLevel(unsigned char level)
+{
+    char tmpStr[20];
+    strcpy(tmpStr, "\e[1;61H");
+    unsigned int pos = strlen(tmpStr);
+    tmpStr[pos++] = level / 10 + '0';
+    tmpStr[pos++] = level % 10 + '0';
+    tmpStr[pos++] = 0;
+    fSend(tmpStr, pos);
+}
+
 void fDisplayPause(char state)
 {
     char tmpStr[20];
@@ -426,6 +438,9 @@ void fInitGame()
     fUpdateLives(lives);
 
     strcpy(score, "0000");
+
+    level = 1;
+    fUpdateLevel(level);
 
     ballPos.x = barPosition + BARwidth/2-10;        // on position 30
     ballPos.y = BARyPOS-BALLwh;
@@ -663,6 +678,9 @@ int main()
                             if (tmpScore % 56 == 0)
                             {
                                 // next level
+                                level++;
+                                fUpdateLevel(level);
+
                                 ballMoving = 0;
                                 barPosition = INITALbarPOS;
                                 fMoveSprite(spIdxBar, barPosition, BARyPOS);
